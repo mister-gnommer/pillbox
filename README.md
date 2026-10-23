@@ -24,10 +24,13 @@ Filling a weekly organiser means going back and forth between a list on a screen
 
   A session can start from the list or from a pillbox screen. An empty pillbox shows a "no medications" warning instead of reading.
 - **Your own API key**: you enter your ElevenLabs key in the app and it's stored on the device.
+- **Voice commands** (moved up from the secondary list once time allowed): after each reading the app listens for 5 seconds, with a pulsing 🎤. Saying "powtórz", "dalej" or "stop" does the same as the button. ElevenLabs speech-to-text (`scribe_v2`, Polish) turns the speech into text. Buttons still work while it listens. If microphone access is denied, the session works with buttons only.
+  - Known risk: the microphone stays enabled for the whole session. On iOS with Bluetooth headphones, readings may sound like phone-call audio. The fix is to enable recording only during the 5-second window; it was cut for time.
+  - Speech-to-text is told to listen for the three command words, which costs about 20% more per transcription.
 
 ### Secondary (if time allows)
 
-- Voice commands ("powtórz", "dalej", "stop").
+- ~~Voice commands ("powtórz", "dalej", "stop").~~ Done, see Primary.
 - Audio caching across sessions.
 - Medication form as a fixed list (tabletka, kapsułka, …) instead of free text.
 - User-adjustable reading speed.
@@ -40,7 +43,7 @@ Filling a weekly organiser means going back and forth between a list on a screen
 ## Tech stack
 
 - [Expo](https://expo.dev) SDK 58 with [Expo Router](https://docs.expo.dev/router/introduction), React Native and TypeScript
-- ElevenLabs text-to-speech API
+- ElevenLabs text-to-speech and speech-to-text APIs
 - `expo-secure-store` for the API key, and AsyncStorage for pillbox data. SecureStore can reject values over about 2 KB.
 - React Context as the global store
 
@@ -60,7 +63,7 @@ Open the app in [Expo Go](https://expo.dev/go) on your phone. Go to settings, pa
 ```
 src/
   app/        # Expo Router screens
-  features/   # one folder per feature (pillboxes, reading, settings)
+  features/   # one folder per feature (pillboxes, reading, settings, voice)
 openspec/     # specs and change proposals (spec-driven development)
 ```
 

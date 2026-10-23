@@ -42,9 +42,9 @@ Builds on `reading-session` (being applied alongside this change): `useReader()`
 - Audio mode: with the session mounted, `setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true, shouldPlayInBackground: true, interruptionMode: "doNotMix" })`. The root layout's mode is restored on unmount (`allowsRecording: false`). `shouldRouteThroughEarpiece` stays false so playback still uses the speaker.
 
 ### Wiring in the session screen
-- `useReader` gains an `onFinished` callback, fired when `useAudioPlayerStatus(player).didJustFinish` becomes true. It doesn't fire on `stop()`, because pausing doesn't set `didJustFinish`.
-- Session: `useReader({ onFinished: listener.listen })`. The arrival effect calls `listener.listen()` for an empty pillbox.
-- `onCommand` maps to the existing `repeat`, `next` and `stop` handlers. Every button handler calls `listener.cancel()` first. So "voice = button" holds by construction.
+- `useReader` returns `finishes`, a counter that `useEventListener(player, "playbackStatusUpdate")` bumps on every status with `didJustFinish`. Reading `didJustFinish` from `useAudioPlayerStatus` isn't enough: it is state, and a following `didJustFinish: false` status in the same batch hides the `true` one. (A callback was planned, but the React Compiler lint rejects the handler ↔ listener cycle it creates.) It doesn't count `stop()`, because pausing doesn't set `didJustFinish`.
+- Session: an effect on `[reader.finishes]` calls `listener.listen()` when the counter is above 0. The arrival effect calls `listener.listen()` for an empty pillbox.
+- `onCommand` maps to the existing `repeat`, `next` and `stop` handlers. `useListener` keeps the latest `onCommand` in a ref, because a window outlives the render that opened it (e.g. one opened while a stale `playing` status was still rendered). Every button handler calls `listener.cancel()` first. So "voice = button" holds by construction.
 - Indicator: a 🎤 glyph and "Słucham…" with `Animated.loop` on opacity (`useNativeDriver: true`), rendered only while `listening`, with `aria-live="polite"`.
 
 ### Tests

@@ -11,19 +11,35 @@ import PillboxForm from "@/app/pillbox-form";
 import Session from "@/app/session";
 import Settings from "@/app/settings";
 import { STORAGE_KEY, type State } from "@/features/pillboxes/store";
-import { synthesize } from "@/features/reading/elevenlabs";
+import { synthesize, transcribe } from "@/features/reading/elevenlabs";
 
-// Playback state the mocked status hook re-renders on, so the screen sees play/pause like on a device.
-const mockAudio = { playing: false, listeners: new Set<() => void>() };
-const mockSetPlaying = (playing: boolean) => {
-  mockAudio.playing = playing;
-  mockAudio.listeners.forEach((listener) => listener());
+// Playback state the mocked status hook re-renders on and the player emits, so the screen sees play/pause like on a device.
+type MockStatus = { playing: boolean; didJustFinish: boolean };
+const mockAudio = {
+  status: { playing: false, didJustFinish: false },
+  micGranted: true,
+  listeners: new Set<(status: MockStatus) => void>(),
+};
+const mockSetStatus = (playing: boolean, didJustFinish = false) => {
+  mockAudio.status = { playing, didJustFinish };
+  mockAudio.listeners.forEach((listener) => listener(mockAudio.status));
+};
+const mockSetPlaying = (playing: boolean) => mockSetStatus(playing);
+const mockRecorder = {
+  uri: "file:///cache/rec.m4a",
+  prepareToRecordAsync: jest.fn(async () => {}),
+  record: jest.fn(),
+  stop: jest.fn(async () => {}),
 };
 const mockPlayer = {
   replace: jest.fn(),
   play: jest.fn(() => mockSetPlaying(true)),
   pause: jest.fn(() => mockSetPlaying(false)),
   seekTo: jest.fn(async () => {}),
+  addListener: (_event: string, listener: (status: MockStatus) => void) => {
+    mockAudio.listeners.add(listener);
+    return { remove: () => mockAudio.listeners.delete(listener) };
+  },
 };
 jest.mock("expo-audio", () => {
   const { useSyncExternalStore } = jest.requireActual("react");
@@ -34,15 +50,19 @@ jest.mock("expo-audio", () => {
   return {
     setAudioModeAsync: async () => {},
     useAudioPlayer: () => mockPlayer,
-    useAudioPlayerStatus: () => ({ playing: useSyncExternalStore(subscribe, () => mockAudio.playing) }),
+    useAudioPlayerStatus: () => useSyncExternalStore(subscribe, () => mockAudio.status),
+    useAudioRecorder: () => mockRecorder,
+    RecordingPresets: { HIGH_QUALITY: {} },
+    requestRecordingPermissionsAsync: async () => ({ granted: mockAudio.micGranted }),
   };
 });
 const mockSecureStore = new Map<string, string>();
 jest.mock("expo-secure-store", () => ({
   getItemAsync: async (key: string) => mockSecureStore.get(key) ?? null,
 }));
-jest.mock("@/features/reading/elevenlabs", () => ({ synthesize: jest.fn() }));
+jest.mock("@/features/reading/elevenlabs", () => ({ synthesize: jest.fn(), transcribe: jest.fn() }));
 const mockSynthesize = jest.mocked(synthesize);
+const mockTranscribe = jest.mocked(transcribe);
 
 const routes = {
   _layout: RootLayout,
@@ -62,15 +82,17 @@ const state: State = [
 ];
 
 let alertSpy: jest.SpyInstance;
-const user = userEvent.setup();
+let user = userEvent.setup();
 
 beforeEach(async () => {
   await AsyncStorage.clear();
   jest.clearAllMocks();
-  mockAudio.playing = false;
+  mockAudio.status = { playing: false, didJustFinish: false };
+  mockAudio.micGranted = true;
   mockSecureStore.clear();
   mockSecureStore.set("elevenlabs-api-key", "k");
   mockSynthesize.mockImplementation(async (text) => `file:///cache/${text.length}.mp3`);
+  mockTranscribe.mockResolvedValue("");
   alertSpy = jest.spyOn(Alert, "alert").mockImplementation(() => {});
 });
 
@@ -262,4 +284,178 @@ test("a failure alerts and Anuluj leaves the controls working", async () => {
   expect(await screen.findByText("Pudełko 2 z 3")).toBeOnTheScreen();
   await user.press(button("Stop"));
   expect(await atList()).toBeOnTheScreen();
+});
+
+describe("voice commands", () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+  });
+  afterEach(() => {
+    jest.restoreAllMocks();
+    jest.useRealTimers();
+    user = userEvent.setup();
+  });
+
+  const listening = () => screen.queryByText("🎤 Słucham…");
+
+  /** Starts a session on Rano and lets its reading play to the end, which opens a listening window. */
+  async function finishFirstReading() {
+    await startAt("Rano");
+    await waitFor(() => expect(mockPlayer.play).toHaveBeenCalledTimes(1));
+    expect(mockRecorder.record).not.toHaveBeenCalled();
+    // The native player follows the finish with a plain status in the same batch.
+    await act(async () => {
+      mockSetStatus(false, true);
+      mockSetStatus(false);
+    });
+    await waitFor(() => expect(listening()).toBeOnTheScreen());
+  }
+
+  /** Ends the 5 s recording window. */
+  const endWindow = () => act(() => jest.advanceTimersByTimeAsync(5000));
+
+  /** Makes the next transcription wait until the test resolves it, ignoring aborts like a late response. */
+  function lateTranscript() {
+    let signal: AbortSignal | undefined;
+    let resolve: (text: string) => void = () => {};
+    mockTranscribe.mockImplementationOnce(
+      (_uri, _key, s) =>
+        new Promise((r) => {
+          signal = s;
+          resolve = r;
+        }),
+    );
+    return { signal: () => signal, resolve: (text: string) => act(async () => resolve(text)) };
+  }
+
+  test("listens for 5 s after a reading finishes, then Dalej by voice moves on", async () => {
+    mockTranscribe.mockResolvedValueOnce("Dalej.");
+    await finishFirstReading();
+    expect(mockRecorder.record).toHaveBeenCalledTimes(1);
+
+    await act(() => jest.advanceTimersByTimeAsync(4999));
+    expect(mockTranscribe).not.toHaveBeenCalled();
+    await act(() => jest.advanceTimersByTimeAsync(1));
+
+    expect(mockRecorder.stop).toHaveBeenCalled();
+    expect(mockTranscribe).toHaveBeenCalledWith("file:///cache/rec.m4a", "k", expect.any(AbortSignal));
+    expect(await screen.findByText("Pudełko 2 z 3")).toBeOnTheScreen();
+    // An empty pillbox has nothing to read, so it listens straight away.
+    await waitFor(() => expect(mockRecorder.record).toHaveBeenCalledTimes(2));
+  });
+
+  test("stop by voice after Dalej during playback ends the session", async () => {
+    // On a device the paused status arrives after the next pillbox has rendered.
+    mockPlayer.pause.mockImplementationOnce(() => setTimeout(() => mockSetPlaying(false), 0));
+    mockTranscribe.mockResolvedValueOnce("stop");
+    await startAt("Rano");
+    await waitFor(() => expect(mockPlayer.play).toHaveBeenCalledTimes(1));
+
+    await user.press(button("Dalej"));
+    expect(await screen.findByText("Brak leków w tym pudełku")).toBeOnTheScreen();
+    await endWindow();
+
+    expect(await atList()).toBeOnTheScreen();
+  });
+
+  test("powtorz by voice on an empty pillbox reads nothing", async () => {
+    mockTranscribe.mockResolvedValueOnce("Dalej.").mockResolvedValueOnce("powtórz");
+    await finishFirstReading();
+    await endWindow();
+    expect(await screen.findByText("Pudełko 2 z 3")).toBeOnTheScreen();
+
+    await endWindow();
+
+    await waitFor(() => expect(listening()).not.toBeOnTheScreen());
+    expect(mockSynthesize).toHaveBeenCalledTimes(1);
+  });
+
+  test("powtorz by voice reads the pillbox again", async () => {
+    mockTranscribe.mockResolvedValueOnce("powtorz");
+    await finishFirstReading();
+    await endWindow();
+
+    await waitFor(() => expect(mockPlayer.play).toHaveBeenCalledTimes(2));
+    expect(listening()).not.toBeOnTheScreen();
+  });
+
+  test("stop by voice ends the session", async () => {
+    mockTranscribe.mockResolvedValueOnce("Stop!");
+    await finishFirstReading();
+    await endWindow();
+
+    expect(await atList()).toBeOnTheScreen();
+  });
+
+  test("an unrecognised transcript does nothing", async () => {
+    mockTranscribe.mockResolvedValueOnce("dalej, stop");
+    await finishFirstReading();
+    await endWindow();
+
+    await waitFor(() => expect(listening()).not.toBeOnTheScreen());
+    expect(screen.getByText("Pudełko 1 z 3")).toBeOnTheScreen();
+    expect(mockPlayer.play).toHaveBeenCalledTimes(1);
+  });
+
+  test("a tap while recording stops the recorder and never transcribes that window", async () => {
+    await finishFirstReading();
+    expect(button("Powtórz")).toBeEnabled();
+
+    await user.press(button("Powtórz"));
+
+    expect(mockRecorder.stop).toHaveBeenCalled();
+    expect(listening()).not.toBeOnTheScreen();
+    await waitFor(() => expect(mockPlayer.play).toHaveBeenCalledTimes(2));
+    await endWindow();
+    expect(mockTranscribe).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    ["Dalej", () => screen.findByText("Pudełko 2 z 3")],
+    ["Powtórz", () => waitFor(() => expect(mockPlayer.play).toHaveBeenCalledTimes(2))],
+    ["Stop", atList],
+  ])("%s while transcribing aborts it, acts, and ignores the late transcript", async (name, acted) => {
+    const transcript = lateTranscript();
+    await finishFirstReading();
+    await endWindow();
+    expect(button(name)).toBeEnabled();
+
+    await user.press(button(name));
+    await acted();
+    expect(transcript.signal()?.aborted).toBe(true);
+    await transcript.resolve("dalej");
+
+    expect(screen.queryByText("Pudełko 3 z 3")).not.toBeOnTheScreen();
+    if (name !== "Stop") {
+      expect(screen.getByText(name === "Dalej" ? "Pudełko 2 z 3" : "Pudełko 1 z 3")).toBeOnTheScreen();
+    }
+  });
+
+  test("with the microphone denied, readings finish without listening", async () => {
+    mockAudio.micGranted = false;
+    await startAt("Rano");
+    await waitFor(() => expect(mockPlayer.play).toHaveBeenCalledTimes(1));
+
+    await act(async () => mockSetStatus(false, true));
+    await endWindow();
+
+    expect(mockRecorder.record).not.toHaveBeenCalled();
+    expect(listening()).not.toBeOnTheScreen();
+    expect(alertSpy).not.toHaveBeenCalled();
+    await user.press(button("Dalej"));
+    expect(await screen.findByText("Pudełko 2 z 3")).toBeOnTheScreen();
+  });
+
+  test("a failed transcription ends listening without an alert", async () => {
+    jest.spyOn(console, "error").mockImplementation(() => {});
+    mockTranscribe.mockRejectedValueOnce(new Error("Brak połączenia z internetem"));
+    await finishFirstReading();
+    await endWindow();
+
+    await waitFor(() => expect(listening()).not.toBeOnTheScreen());
+    expect(alertSpy).not.toHaveBeenCalled();
+    await user.press(button("Dalej"));
+    expect(await screen.findByText("Pudełko 2 z 3")).toBeOnTheScreen();
+  });
 });

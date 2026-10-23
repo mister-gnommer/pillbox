@@ -1,14 +1,14 @@
 import { File } from "expo-file-system";
 
-import { synthesize } from "./elevenlabs";
+import { synthesize, transcribe } from "./elevenlabs";
 
 // Untyped on purpose: tests return partial responses with only the fields synthesize reads.
 const mockFetch = jest.fn();
 jest.mock("expo/fetch", () => ({ fetch: (...args: unknown[]) => mockFetch(...args) }));
 jest.mock("expo-file-system", () => ({
   Paths: { cache: "file:///cache" },
-  File: jest.fn().mockImplementation((dir: string, name: string) => ({
-    uri: `${dir}/${name}`,
+  File: jest.fn().mockImplementation((...parts: string[]) => ({
+    uri: parts.join("/"),
     write: jest.fn().mockResolvedValue(undefined),
   })),
 }));
@@ -24,6 +24,7 @@ function respond(status: number, body = "") {
     ok: status >= 200 && status < 300,
     status,
     text: async () => body,
+    json: async () => JSON.parse(body),
     bytes: async () => bytes,
   });
   return bytes;
@@ -49,6 +50,30 @@ test("posts the script and saves the returned audio to a cache file", async () =
   expect(uri).toMatch(/^file:\/\/\/cache\/reading-\d+\.mp3$/);
 });
 
+test("posts the recording for Polish speech-to-text and returns the transcript", async () => {
+  respond(200, '{"text":"Dalej."}');
+
+  const text = await transcribe("file:///cache/rec.m4a", "secret");
+
+  const [url, init] = mockFetch.mock.lastCall ?? [];
+  expect(url).toBe("https://api.elevenlabs.io/v1/speech-to-text");
+  expect(init?.headers).toEqual({ "xi-api-key": "secret" });
+  const form: FormData = init?.body;
+  expect(form.get("model_id")).toBe("scribe_v2");
+  expect(form.get("language_code")).toBe("pl");
+  expect(form.get("tag_audio_events")).toBe("false");
+  expect(form.getAll("keyterms")).toEqual(["powtórz", "dalej", "stop"]);
+  // Node's FormData stringifies the mocked File, so only check the field exists and the file was opened from the URI.
+  expect(form.has("file")).toBe(true);
+  expect(File).toHaveBeenLastCalledWith("file:///cache/rec.m4a");
+  expect(text).toBe("Dalej.");
+});
+
+test("rejects a transcript response without text", async () => {
+  respond(200, '{"detail":"?"}');
+  await expect(transcribe("file:///r.m4a", "k")).rejects.toThrow("Nieoczekiwana odpowiedź ElevenLabs");
+});
+
 test.each([
   [401, '{"detail":{"status":"invalid_api_key","message":"Invalid API key"}}', "Nieprawidłowy klucz API"],
   [401, '{"detail":{"status":"detected_unusual_activity","message":"Unusual activity"}}', "Błąd ElevenLabs (401): Unusual activity"],
@@ -59,11 +84,13 @@ test.each([
 ])("maps HTTP %i %s to a Polish reason", async (status, body, reason) => {
   respond(status, body);
   await expect(synthesize("x", "k")).rejects.toThrow(reason);
+  await expect(transcribe("file:///r.m4a", "k")).rejects.toThrow(reason);
 });
 
 test("maps a network failure to a connection reason", async () => {
   mockFetch.mockRejectedValue(new TypeError("Network request failed"));
   await expect(synthesize("x", "k")).rejects.toThrow("Brak połączenia z internetem");
+  await expect(transcribe("file:///r.m4a", "k")).rejects.toThrow("Brak połączenia z internetem");
 });
 
 test("passes the abort signal to fetch", async () => {

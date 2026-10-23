@@ -32,5 +32,5 @@ None. The `reading-session` button behaviour is unchanged; voice triggers the sa
 
 - `app.json`: turn the microphone back on in the `expo-audio` plugin (a Polish `microphonePermission` text, `recordAudioAndroid: true`).
 - New: `transcribe()` in `src/features/reading/elevenlabs.ts`, `src/features/voice/command.ts`, `src/features/voice/useListener.ts`.
-- Edits: `useReader` gets an `onFinished` callback, and the session screen gets the listening wiring and indicator.
+- Edits: `useReader` returns a `finishes` counter, and the session screen gets the listening wiring and indicator.
 - Credits: one speech-to-text call (about 5 s of audio) per pillbox.

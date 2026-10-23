@@ -3,12 +3,12 @@ import { Stack } from "expo-router";
 import { useEffect } from "react";
 
 import { PillboxesProvider } from "@/features/pillboxes/store";
+import { PLAYBACK_MODE } from "@/features/reading/useReader";
 
 export default function RootLayout() {
   useEffect(() => {
-    // Without playsInSilentMode the iOS silent switch mutes the reading; doNotMix pauses music so it is heard.
     // shortcut: no lock-screen controls, so Android stops background audio after ~3 min; add setActiveForLockScreen if a reading can get that long
-    setAudioModeAsync({ playsInSilentMode: true, shouldPlayInBackground: true, interruptionMode: "doNotMix" }).catch((error: unknown) => {
+    setAudioModeAsync(PLAYBACK_MODE).catch((error: unknown) => {
       console.error("Could not set the audio mode", error);
     });
   }, []);

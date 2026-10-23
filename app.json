@@ -36,8 +36,8 @@
       [
         "expo-audio",
         {
-          "microphonePermission": false,
-          "recordAudioAndroid": false,
+          "microphonePermission": "Pillbox słucha komend głosowych: powtórz, dalej, stop.",
+          "recordAudioAndroid": true,
           "enableBackgroundPlayback": true
         }
       ],

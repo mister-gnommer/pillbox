@@ -13,7 +13,9 @@ import Settings from "@/app/settings";
 import { STORAGE_KEY, type State } from "@/features/pillboxes/store";
 import { synthesize } from "@/features/reading/elevenlabs";
 
-const mockPlayer = { replace: jest.fn(), play: jest.fn(), pause: jest.fn(), seekTo: jest.fn(async () => {}) };
+const mockPlayer = { replace: jest.fn(), play: jest.fn(), pause: jest.fn(), seekTo: jest.fn(async () => {}),
+  addListener: () => ({ remove: () => {} }),
+};
 jest.mock("expo-audio", () => ({
   setAudioModeAsync: async () => {},
   useAudioPlayer: () => mockPlayer,
