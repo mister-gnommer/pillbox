@@ -3,6 +3,7 @@ import { FlatList, Pressable, Text, View } from "react-native";
 
 import { usePillboxes } from "@/features/pillboxes/store";
 import { Button, confirmDelete, IconButton, styles } from "@/features/pillboxes/ui";
+import { startSession } from "@/features/reading/session";
 
 export default function PillboxList() {
   const { pillboxes, movePillbox, deletePillbox } = usePillboxes();
@@ -27,6 +28,7 @@ export default function PillboxList() {
             >
               <Text style={styles.name}>{item.name}</Text>
             </Pressable>
+            <IconButton glyph="▶" label={`Rozpocznij od: ${item.name}`} onPress={() => startSession(item.id)} />
             <IconButton
               glyph="↑"
               label={`W górę: ${item.name}`}

@@ -8,6 +8,7 @@ import Index from "@/app/index";
 import MedicationForm from "@/app/medication-form";
 import PillboxScreen from "@/app/pillbox/[id]";
 import PillboxForm from "@/app/pillbox-form";
+import Session from "@/app/session";
 import Settings from "@/app/settings";
 import { STORAGE_KEY, type State } from "@/features/pillboxes/store";
 import { synthesize } from "@/features/reading/elevenlabs";
@@ -34,6 +35,7 @@ const routes = {
   "pillbox/[id]": PillboxScreen,
   "pillbox-form": PillboxForm,
   "medication-form": MedicationForm,
+  session: Session,
   settings: Settings,
 };
 
@@ -265,7 +267,11 @@ describe("reading a pillbox", () => {
     await startApp(rano, "/pillbox/r");
 
     await read();
-    expect(mockSynthesize).toHaveBeenCalledWith(expect.stringMatching(/^Pudełko: Rano\. Liczba leków: 2\./), "k");
+    expect(mockSynthesize).toHaveBeenCalledWith(
+      expect.stringMatching(/^Pudełko: Rano\. Liczba leków: 2\./),
+      "k",
+      expect.any(AbortSignal),
+    );
     expect(mockPlayer.replace).toHaveBeenCalledWith({ uri: "file:///cache/a.mp3" });
     expect(mockPlayer.play).toHaveBeenCalledTimes(1);
 

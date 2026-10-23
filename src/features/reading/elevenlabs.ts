@@ -10,15 +10,17 @@ const ENDPOINT = `https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}?output
  * Every failure is thrown as an `Error` whose message is a short Polish reason for the user.
  * @param text script to read, may contain `<break>` tags
  * @param apiKey user's ElevenLabs API key
+ * @param signal aborts the request
  * @returns local file URI of the audio
  */
-export async function synthesize(text: string, apiKey: string): Promise<string> {
+export async function synthesize(text: string, apiKey: string, signal?: AbortSignal): Promise<string> {
   let response;
   try {
     response = await fetch(ENDPOINT, {
       method: "POST",
       headers: { "xi-api-key": apiKey, "Content-Type": "application/json" },
       body: JSON.stringify({ text, model_id: "eleven_multilingual_v2", voice_settings: { speed: 0.8 } }),
+      signal,
     });
   } catch {
     throw new Error("Brak połączenia z internetem");

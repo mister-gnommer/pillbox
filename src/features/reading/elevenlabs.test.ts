@@ -65,3 +65,12 @@ test("maps a network failure to a connection reason", async () => {
   mockFetch.mockRejectedValue(new TypeError("Network request failed"));
   await expect(synthesize("x", "k")).rejects.toThrow("Brak połączenia z internetem");
 });
+
+test("passes the abort signal to fetch", async () => {
+  respond(200);
+  const controller = new AbortController();
+
+  await synthesize("x", "k", controller.signal);
+
+  expect(mockFetch.mock.lastCall?.[1]?.signal).toBe(controller.signal);
+});
