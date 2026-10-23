@@ -43,7 +43,7 @@ export function Button({ title, onPress, disabled }: ButtonProps) {
 export const styles = StyleSheet.create({
   screen: { flex: 1, padding: 16, gap: 12 },
   empty: { fontSize: 18, textAlign: "center", marginVertical: 24 },
-  row: { flexDirection: "row", alignItems: "center", minHeight: 56, borderBottomWidth: StyleSheet.hairlineWidth },
+  row: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 56, borderBottomWidth: StyleSheet.hairlineWidth },
   rowMain: { flex: 1, justifyContent: "center", minHeight: 56, paddingVertical: 8 },
   name: { fontSize: 18 },
   amount: { fontSize: 15, opacity: 0.7 },
