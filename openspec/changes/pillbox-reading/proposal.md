@@ -29,6 +29,6 @@ None. `pillboxes` and `medications` (from `pillbox-management`) are read, not ch
 
 ## Impact
 
-- New dependencies (all in Expo Go): `expo-audio`, `expo-file-system`, `expo-secure-store`.
+- New dependencies (all in Expo Go): `expo-audio`, `expo-file-system`, `expo-secure-store`, plus `expo-asset` (a peer dependency of `expo-audio`).
 - New code: `src/features/reading/`, `src/features/settings/`, route `src/app/settings.tsx`. Edits to `src/app/pillbox/[id].tsx` (button) and `src/app/index.tsx` (header gear).
 - External: HTTPS calls to `api.elevenlabs.io` with the user's key; consumes the user's ElevenLabs credits (~1 credit per character).

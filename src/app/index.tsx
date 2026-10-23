@@ -1,4 +1,4 @@
-import { router } from "expo-router";
+import { router, Stack } from "expo-router";
 import { FlatList, Pressable, Text, View } from "react-native";
 
 import { usePillboxes } from "@/features/pillboxes/store";
@@ -9,6 +9,11 @@ export default function PillboxList() {
 
   return (
     <View style={styles.screen}>
+      <Stack.Screen
+        options={{
+          headerRight: () => <IconButton glyph="⚙" label="Ustawienia" onPress={() => router.push("/settings")} />,
+        }}
+      />
       <FlatList
         data={pillboxes}
         keyExtractor={(p) => p.id}

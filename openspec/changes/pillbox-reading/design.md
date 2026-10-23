@@ -34,7 +34,7 @@ The playback flow stays inline in the pillbox screen. A hook would be premature 
 - `POST https://api.elevenlabs.io/v1/text-to-speech/{voiceId}?output_format=mp3_44100_64`, with headers `xi-api-key` and `Content-Type: application/json`.
 - The body is `{ text, model_id: "eleven_multilingual_v2", voice_settings: { speed: 0.8 } }`.
 - The voice is a hardcoded premade voice (`JBFqnCBsd6RMkjVDRZzb`, the one in the docs' examples). Premade voices are usable on the free tier through the API.
-- The request uses `fetch` from `expo/fetch` (WinterCG-compliant, reliable `arrayBuffer()`). The bytes go to `new File(Paths.cache, "reading-<timestamp>.mp3")` via `file.write(new Uint8Array(buf))` (`expo-file-system`), which returns `file.uri`.
+- The request uses `fetch` from `expo/fetch` (WinterCG-compliant, reliable `arrayBuffer()`). The bytes go to `new File(Paths.cache, "reading-<timestamp>.mp3")` via `await file.write(await response.bytes())` (`expo-file-system`; `write` is async in SDK 58), which returns `file.uri`.
   - Rejected: `File.downloadFileAsync`, which is GET-only, and a data URI to the player, whose support varies by platform.
 - Errors map to short reasons:
   - 401 → "Nieprawidłowy klucz API"

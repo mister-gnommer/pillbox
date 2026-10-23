@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { fireEvent, userEvent } from "@testing-library/react-native";
-import { act, renderRouter, screen } from "expo-router/testing-library";
+import { act, renderRouter, screen, testRouter, waitFor } from "expo-router/testing-library";
 import { Alert, type AlertButton } from "react-native";
 
 import RootLayout from "@/app/_layout";
@@ -8,7 +8,25 @@ import Index from "@/app/index";
 import MedicationForm from "@/app/medication-form";
 import PillboxScreen from "@/app/pillbox/[id]";
 import PillboxForm from "@/app/pillbox-form";
+import Settings from "@/app/settings";
 import { STORAGE_KEY, type State } from "@/features/pillboxes/store";
+import { synthesize } from "@/features/reading/elevenlabs";
+
+const mockPlayer = { replace: jest.fn(), play: jest.fn(), pause: jest.fn(), seekTo: jest.fn(async () => {}) };
+jest.mock("expo-audio", () => ({
+  setAudioModeAsync: async () => {},
+  useAudioPlayer: () => mockPlayer,
+  useAudioPlayerStatus: () => ({ playing: false }),
+}));
+const mockSecureStore = new Map<string, string>();
+jest.mock("expo-secure-store", () => ({
+  getItemAsync: async (key: string) => mockSecureStore.get(key) ?? null,
+  setItemAsync: async (key: string, value: string) => void mockSecureStore.set(key, value),
+  deleteItemAsync: async (key: string) => void mockSecureStore.delete(key),
+}));
+jest.mock("@/features/reading/elevenlabs", () => ({ synthesize: jest.fn() }));
+const mockSynthesize = jest.mocked(synthesize);
+const API_KEY = "elevenlabs-api-key";
 
 const routes = {
   _layout: RootLayout,
@@ -16,6 +34,7 @@ const routes = {
   "pillbox/[id]": PillboxScreen,
   "pillbox-form": PillboxForm,
   "medication-form": MedicationForm,
+  settings: Settings,
 };
 
 /**
@@ -49,6 +68,8 @@ const user = userEvent.setup();
 
 beforeEach(async () => {
   await AsyncStorage.clear();
+  jest.clearAllMocks();
+  mockSecureStore.clear();
   alertSpy = jest.spyOn(Alert, "alert").mockImplementation(() => {});
 });
 
@@ -181,5 +202,116 @@ describe("pillbox medications", () => {
 
     await answerAlert("Usuń");
     expect(listed(names)).toEqual(["Witamina D"]);
+  });
+});
+
+describe("settings", () => {
+  test("saves a trimmed API key, shows its end and clears it", async () => {
+    await startApp([]);
+    await user.press(screen.getByRole("button", { name: "Ustawienia" }));
+    expect(await screen.findByText("Brak klucza")).toBeOnTheScreen();
+
+    await user.type(screen.getByLabelText("Klucz API ElevenLabs"), "  sk_abcd1234 ");
+    await user.press(screen.getByRole("button", { name: "Zapisz" }));
+    expect(await screen.findByText("Klucz zapisany (…1234)")).toBeOnTheScreen();
+    expect(mockSecureStore.get(API_KEY)).toBe("sk_abcd1234");
+
+    await user.press(screen.getByRole("button", { name: "Usuń klucz" }));
+    expect(await screen.findByText("Brak klucza")).toBeOnTheScreen();
+    expect(mockSecureStore.has(API_KEY)).toBe(false);
+  });
+});
+
+describe("reading a pillbox", () => {
+  const rano: State = [
+    {
+      id: "r",
+      name: "Rano",
+      medications: [
+        { id: "m1", name: "Metformina", amount: "1 tabletka" },
+        { id: "m2", name: "Witamina D", amount: "" },
+      ],
+    },
+  ];
+
+  /** Taps Czytaj and waits until the read finishes and the button is back. */
+  async function read() {
+    await user.press(screen.getByRole("button", { name: "Czytaj" }));
+    await screen.findByRole("button", { name: "Czytaj" });
+  }
+
+  test("warns about an empty pillbox without a request", async () => {
+    mockSecureStore.set(API_KEY, "k");
+    await startApp([{ id: "e", name: "Puste", medications: [] }], "/pillbox/e");
+    await read();
+
+    expect(alertSpy).toHaveBeenLastCalledWith("Brak leków w tym pudełku");
+    expect(mockSynthesize).not.toHaveBeenCalled();
+  });
+
+  test("without a key, alerts and links to settings", async () => {
+    await startApp(rano, "/pillbox/r");
+    await read();
+
+    expect(alertSpy).toHaveBeenLastCalledWith("Brak klucza API ElevenLabs", expect.any(String), expect.any(Array));
+    expect(mockSynthesize).not.toHaveBeenCalled();
+    await answerAlert("Przejdź do ustawień");
+    expect(await screen.findByText("Brak klucza")).toBeOnTheScreen();
+  });
+
+  test("plays the audio, replays it without a new request, and re-requests after an edit", async () => {
+    mockSecureStore.set(API_KEY, "k");
+    mockSynthesize.mockResolvedValue("file:///cache/a.mp3");
+    await startApp(rano, "/pillbox/r");
+
+    await read();
+    expect(mockSynthesize).toHaveBeenCalledWith(expect.stringMatching(/^Pudełko: Rano\. Liczba leków: 2\./), "k");
+    expect(mockPlayer.replace).toHaveBeenCalledWith({ uri: "file:///cache/a.mp3" });
+    expect(mockPlayer.play).toHaveBeenCalledTimes(1);
+
+    await read();
+    expect(mockSynthesize).toHaveBeenCalledTimes(1);
+    expect(mockPlayer.seekTo).toHaveBeenCalledWith(0);
+    expect(mockPlayer.play).toHaveBeenCalledTimes(2);
+
+    await user.press(screen.getByRole("button", { name: "Usuń: Witamina D" }));
+    await answerAlert("Usuń");
+    await read();
+    expect(mockSynthesize).toHaveBeenCalledTimes(2);
+  });
+
+  test("ignores a download that finishes after leaving the screen", async () => {
+    mockSecureStore.set(API_KEY, "k");
+    let finish: (uri: string) => void = () => {};
+    mockSynthesize.mockReturnValue(new Promise((resolve) => (finish = resolve)));
+    await startApp(rano);
+    await user.press(screen.getByText("Rano"));
+    await user.press(await screen.findByRole("button", { name: "Czytaj" }));
+    await screen.findByLabelText("Pobieranie nagrania");
+
+    await act(async () => testRouter.back());
+    await act(async () => finish("file:///cache/late.mp3"));
+
+    expect(screen.getByRole("button", { name: "Dodaj pudełko" })).toBeOnTheScreen();
+    expect(mockPlayer.replace).not.toHaveBeenCalled();
+    expect(mockPlayer.play).not.toHaveBeenCalled();
+    expect(alertSpy).not.toHaveBeenCalled();
+  });
+
+  test("shows the failure reason and retries", async () => {
+    mockSecureStore.set(API_KEY, "k");
+    mockSynthesize.mockRejectedValue(new Error("Nieprawidłowy klucz API"));
+    await startApp(rano, "/pillbox/r");
+    await read();
+
+    expect(alertSpy).toHaveBeenLastCalledWith(
+      "Nie udało się odczytać pudełka",
+      "Nieprawidłowy klucz API",
+      expect.any(Array),
+    );
+    expect(mockPlayer.play).not.toHaveBeenCalled();
+
+    await answerAlert("Spróbuj ponownie");
+    await waitFor(() => expect(mockSynthesize).toHaveBeenCalledTimes(2));
   });
 });
