@@ -22,12 +22,12 @@ Array order *is* the order for both lists, so there is no `position` field to ke
 
 ### Store: Context + `useReducer` in `src/features/pillboxes/store.tsx`
 - The reducer is exported for unit tests. Actions: `hydrate`, `addPillbox`, `renamePillbox`, `deletePillbox`, `movePillbox(id, -1|1)`, `addMedication`, `updateMedication`, `deleteMedication`.
-- `PillboxesProvider` wraps the root layout. `usePillboxes()` returns `{ pillboxes, ready, ...actionFns }`.
+- `PillboxesProvider` wraps the root layout. `usePillboxes()` returns `{ pillboxes, ...actionFns }`.
 - The reducer trims names and amounts and ignores empty names, so unit tests cover the rule. The forms also disable Save for a better UX.
 
 ### Persistence: AsyncStorage, whole-state JSON
 - Key `pillbox:v1`. Load once on mount, dispatch `hydrate`, set `ready`. Save the whole state on every change **only after hydration**, so an early empty state never overwrites stored data.
-- Screens render a spinner until `ready`.
+- The provider renders a spinner instead of its children until loading finishes. Screens and forms never see unloaded state, so no `ready` flag is exposed.
 - Alternative: SecureStore. Rejected because of the ~2 KB value limit (see context Q3). expo-sqlite was rejected as overkill.
 
 ### Routes

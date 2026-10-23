@@ -69,8 +69,9 @@ Files are split out when they earn their own place, not in advance.
 ## Development
 
 ```bash
-npx tsc --noEmit
+npx tsc --noEmit   # needs route types: run `npx expo start` once on a fresh checkout
 npm run lint
+npm test
 ```
 
 The decision record from the planning interview and a draft spec are in [docs/context.md](docs/context.md).
