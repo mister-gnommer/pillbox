@@ -1,56 +1,78 @@
-# Welcome to your Expo app 👋
+# Pillbox
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Fill your pillboxes without looking at your phone. The app reads out what goes into each pillbox, slowly and in Polish, while your hands are busy with the pills.
 
-## Get started
+Built as a 1–2 hour recruitment assignment: voice as the interface to something health-related.
 
-1. Install dependencies
+## Why this problem
 
-   ```bash
-   npm install
-   ```
+Filling a weekly organiser means going back and forth between a list on a screen and a dozen blister packs. That back-and-forth causes mistakes, and it's hard for older people and their carers. Listening keeps your eyes and hands on the pills. You only touch the phone to say "again" or "next".
 
-2. Start the app
+<!-- TODO: rejected alternatives and cuts, filled in as we go -->
 
-   ```bash
-   npx expo start
-   ```
+## Features
 
-In the output, you'll find options to open the app in a
+### Primary (this version)
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+- **Pillboxes**: create, rename, delete and reorder. Names are free-form ("Morning", "Mon evening", "Mum"). Add and rename use a modal form; reorder with ↑/↓ buttons.
+- **Medications**: create, edit and delete them inside a pillbox, in the order you added them. Each has a name (required) and an amount (optional), both free text (e.g. "1 tabletka", "½"), entered in a modal form. Deleting a pillbox or medication asks for confirmation.
+- **Reading**: [ElevenLabs](https://elevenlabs.io) text-to-speech (`eleven_multilingual_v2`, slowed speed) reads a pillbox's contents slowly, as one recording per pillbox. Repeat replays the downloaded file without a new request.
+- **Session controls**: three large icon buttons:
+  - **Repeat**: read the current pillbox again from the start.
+  - **Next**: go to the next pillbox, cutting playback. On the last one, it returns to the list.
+  - **Stop**: stop playback, or if nothing is playing, end the session.
 
-You can start developing by editing the files inside the **src/app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+  A session can start from the list or from a pillbox screen. An empty pillbox shows a "no medications" warning instead of reading.
+- **Your own API key**: you enter your ElevenLabs key in the app and it's stored on the device.
 
-## Get a fresh project
+### Secondary (if time allows)
 
-When you're ready, run:
+- Voice commands ("powtórz", "dalej", "stop").
+- Audio caching across sessions.
+- Medication form as a fixed list (tabletka, kapsułka, …) instead of free text.
+- User-adjustable reading speed.
+- Fallback to on-device speech (`expo-speech`) when ElevenLabs fails.
+- "Gotowe ✓" success screen at the end of a session.
+- Polish plural agreement in the spoken count ("3 leki", "5 leków") instead of "Liczba leków: 3".
+- **Design**
+  - Nicer loading indicator (animation or progress bar) instead of the basic spinner.
+
+## Tech stack
+
+- [Expo](https://expo.dev) SDK 58 with [Expo Router](https://docs.expo.dev/router/introduction), React Native and TypeScript
+- ElevenLabs text-to-speech API
+- `expo-secure-store` for the API key, and AsyncStorage for pillbox data. SecureStore can reject values over about 2 KB.
+- React Context as the global store
+
+The UI is in Polish. iOS and Android are both supported. Web isn't, because SecureStore has no web implementation.
+
+## Getting started
 
 ```bash
-npm run reset-project
+npm install
+npx expo start
 ```
 
-This command will move the starter code to the **example** directory and create a blank **src/app** directory where you can start developing.
+Open the app in [Expo Go](https://expo.dev/go) on your phone. Go to settings, paste your ElevenLabs API key (the free tier works), and add your first pillbox.
 
-### Other setup steps
+## Project structure
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+```
+src/
+  app/        # Expo Router screens
+  features/   # one folder per feature (pillboxes, reading, settings)
+openspec/     # specs and change proposals (spec-driven development)
+```
 
-## Learn more
+Files are split out when they earn their own place, not in advance.
 
-To learn more about developing your project with Expo, look at the following resources:
+## Development
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+```bash
+npx tsc --noEmit
+npm run lint
+```
 
-## Join the community
+The decision record from the planning interview and a draft spec are in [docs/context.md](docs/context.md).
 
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+Changes are specified with [OpenSpec](https://github.com/Fission-AI/OpenSpec) before they're implemented. See `openspec/`.
